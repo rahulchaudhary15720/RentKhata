@@ -1,4 +1,4 @@
-import { and, asc, desc, eq } from "drizzle-orm";
+import { and, asc, desc, eq, ne } from "drizzle-orm";
 import { getDb, initializeDb } from "@/db";
 import { bills, tenants, units } from "@/db/schema";
 
@@ -65,6 +65,19 @@ export async function POST(request: Request) {
       return Response.json({ unit }, { status: 201 });
     }
 
+    if (payload.action === "updateUnit" && payload.id) {
+      if (!payload.label?.trim() || !payload.type || number(payload.monthlyRent) <= 0) {
+        return Response.json({ error: "Unit name, type and monthly rent are required." }, { status: 400 });
+      }
+      const [unit] = await db.update(units).set({
+        label: payload.label.trim(),
+        type: payload.type,
+        monthlyRent: number(payload.monthlyRent),
+        meterNumber: payload.meterNumber?.trim() ?? "",
+      }).where(eq(units.id, payload.id)).returning();
+      return Response.json({ unit });
+    }
+
     if (payload.action === "addTenant") {
       if (!payload.name?.trim() || !payload.phone?.trim() || !payload.unitId || !payload.moveInDate) {
         return Response.json({ error: "Name, phone, unit and move-in date are required." }, { status: 400 });
@@ -78,6 +91,21 @@ export async function POST(request: Request) {
         notes: payload.notes?.trim() ?? "",
       }).returning();
       return Response.json({ tenant }, { status: 201 });
+    }
+
+    if (payload.action === "updateTenant" && payload.id) {
+      if (!payload.name?.trim() || !payload.phone?.trim() || !payload.unitId || !payload.moveInDate) {
+        return Response.json({ error: "Name, phone, unit and move-in date are required." }, { status: 400 });
+      }
+      const [tenant] = await db.update(tenants).set({
+        name: payload.name.trim(),
+        phone: cleanPhone(payload.phone),
+        unitId: payload.unitId,
+        moveInDate: payload.moveInDate,
+        securityDeposit: number(payload.securityDeposit),
+        notes: payload.notes?.trim() ?? "",
+      }).where(eq(tenants.id, payload.id)).returning();
+      return Response.json({ tenant });
     }
 
     if (payload.action === "addBill") {
@@ -121,6 +149,48 @@ export async function POST(request: Request) {
       return Response.json({ bill }, { status: 201 });
     }
 
+    if (payload.action === "updateBill" && payload.id) {
+      if (!payload.tenantId || !payload.unitId || !payload.billMonth || !payload.dueDate) {
+        return Response.json({ error: "Tenant, bill month and due date are required." }, { status: 400 });
+      }
+      const previous = number(payload.previousReading);
+      const current = number(payload.currentReading);
+      if (current < previous) {
+        return Response.json({ error: "Current reading cannot be less than the previous reading." }, { status: 400 });
+      }
+      const used = current - previous;
+      const electricity = used * number(payload.ratePerUnit);
+      const rent = number(payload.rentAmount);
+      const other = number(payload.otherCharges);
+      const [existingBill] = await db.select({ id: bills.id }).from(bills)
+        .where(and(
+          eq(bills.tenantId, payload.tenantId),
+          eq(bills.billMonth, payload.billMonth),
+          ne(bills.id, payload.id),
+        )).limit(1);
+      if (existingBill) {
+        return Response.json(
+          { error: "A bill already exists for this occupant and month." },
+          { status: 409 },
+        );
+      }
+      const [bill] = await db.update(bills).set({
+        tenantId: payload.tenantId,
+        unitId: payload.unitId,
+        billMonth: payload.billMonth,
+        previousReading: previous,
+        currentReading: current,
+        ratePerUnit: number(payload.ratePerUnit),
+        unitsUsed: used,
+        electricityAmount: electricity,
+        rentAmount: rent,
+        otherCharges: other,
+        totalAmount: rent + electricity + other,
+        dueDate: payload.dueDate,
+      }).where(eq(bills.id, payload.id)).returning();
+      return Response.json({ bill });
+    }
+
     if (payload.action === "markPaid" && payload.id) {
       const [bill] = await db.update(bills).set({
         status: "Paid",
@@ -133,6 +203,12 @@ export async function POST(request: Request) {
       const [tenant] = await db.update(tenants).set({ active: false })
         .where(eq(tenants.id, payload.id)).returning();
       return Response.json({ tenant });
+    }
+
+    if (payload.action === "deleteTenant" && payload.id) {
+      await db.delete(bills).where(eq(bills.tenantId, payload.id));
+      await db.delete(tenants).where(eq(tenants.id, payload.id));
+      return Response.json({ success: true });
     }
 
     if (payload.action === "deleteBill" && payload.id) {

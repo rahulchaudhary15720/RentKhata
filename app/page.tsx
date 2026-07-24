@@ -74,10 +74,13 @@ export default function Home() {
   const [search, setSearch] = useState("");
   const [menuOpen, setMenuOpen] = useState(false);
   const [billTenantId, setBillTenantId] = useState<number | "">("");
-  const [previousReading, setPreviousReading] = useState(0);
-  const [currentReading, setCurrentReading] = useState(0);
-  const [ratePerUnit, setRatePerUnit] = useState(8);
-  const [otherCharges, setOtherCharges] = useState(0);
+  const [previousReading, setPreviousReading] = useState("0");
+  const [currentReading, setCurrentReading] = useState("0");
+  const [ratePerUnit, setRatePerUnit] = useState("8");
+  const [otherCharges, setOtherCharges] = useState("0");
+  const [editingUnit, setEditingUnit] = useState<Unit | null>(null);
+  const [editingTenant, setEditingTenant] = useState<Tenant | null>(null);
+  const [editingBill, setEditingBill] = useState<Bill | null>(null);
 
   const loadData = async () => {
     setLoading(true);
@@ -121,9 +124,9 @@ export default function Home() {
 
   const selectedTenant = billTenantId ? tenantMap.get(Number(billTenantId)) : undefined;
   const selectedUnit = selectedTenant ? unitMap.get(selectedTenant.unitId) : undefined;
-  const unitsUsed = Math.max(0, currentReading - previousReading);
-  const electricityAmount = unitsUsed * ratePerUnit;
-  const billTotal = (selectedUnit?.monthlyRent ?? 0) + electricityAmount + otherCharges;
+  const unitsUsed = Math.max(0, (Number(currentReading) || 0) - (Number(previousReading) || 0));
+  const electricityAmount = unitsUsed * (Number(ratePerUnit) || 0);
+  const billTotal = (selectedUnit?.monthlyRent ?? 0) + electricityAmount + (Number(otherCharges) || 0);
 
   const query = search.trim().toLowerCase();
   const filteredTenants = data.tenants.filter((tenant) => {
@@ -167,27 +170,31 @@ export default function Home() {
   const submitUnit = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
     const form = new FormData(event.currentTarget);
-    await post({
-      action: "addUnit",
+    const saved = await post({
+      action: editingUnit ? "updateUnit" : "addUnit",
+      id: editingUnit?.id,
       label: form.get("label"),
       type: form.get("type"),
       monthlyRent: Number(form.get("monthlyRent")),
       meterNumber: form.get("meterNumber"),
-    }, "Property unit added.");
+    }, editingUnit ? "Property unit updated." : "Property unit added.");
+    if (saved) setEditingUnit(null);
   };
 
   const submitTenant = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
     const form = new FormData(event.currentTarget);
-    await post({
-      action: "addTenant",
+    const saved = await post({
+      action: editingTenant ? "updateTenant" : "addTenant",
+      id: editingTenant?.id,
       name: form.get("name"),
       phone: form.get("phone"),
       unitId: Number(form.get("unitId")),
       moveInDate: form.get("moveInDate"),
       securityDeposit: Number(form.get("securityDeposit")),
       notes: form.get("notes"),
-    }, "Occupant added.");
+    }, editingTenant ? "Occupant updated." : "Occupant added.");
+    if (saved) setEditingTenant(null);
   };
 
   const submitBill = async (event: FormEvent<HTMLFormElement>) => {
@@ -195,22 +202,24 @@ export default function Home() {
     if (!selectedTenant || !selectedUnit) return;
     const form = new FormData(event.currentTarget);
     const saved = await post({
-      action: "addBill",
+      action: editingBill ? "updateBill" : "addBill",
+      id: editingBill?.id,
       tenantId: selectedTenant.id,
       unitId: selectedUnit.id,
       billMonth: form.get("billMonth"),
-      previousReading,
-      currentReading,
-      ratePerUnit,
+      previousReading: Number(previousReading) || 0,
+      currentReading: Number(currentReading) || 0,
+      ratePerUnit: Number(ratePerUnit) || 0,
       rentAmount: selectedUnit.monthlyRent,
-      otherCharges,
+      otherCharges: Number(otherCharges) || 0,
       dueDate: form.get("dueDate"),
-    }, "Rent and electricity bill created.");
+    }, editingBill ? "Bill updated." : "Rent and electricity bill created.");
     if (saved) {
       setBillTenantId("");
-      setPreviousReading(0);
-      setCurrentReading(0);
-      setOtherCharges(0);
+      setPreviousReading("0");
+      setCurrentReading("0");
+      setOtherCharges("0");
+      setEditingBill(null);
     }
   };
 
@@ -242,10 +251,37 @@ export default function Home() {
     setBillTenantId(id);
     if (id) {
       const previous = data.bills.find((bill) => bill.tenantId === id)?.currentReading ?? 0;
-      setPreviousReading(previous);
-      setCurrentReading(previous);
+      setPreviousReading(String(previous));
+      setCurrentReading(String(previous));
     }
     setModal("bill");
+  };
+
+  const openEditUnit = (unit: Unit) => {
+    setEditingUnit(unit);
+    setModal("unit");
+  };
+
+  const openEditTenant = (tenant: Tenant) => {
+    setEditingTenant(tenant);
+    setModal("tenant");
+  };
+
+  const openEditBill = (bill: Bill) => {
+    setBillTenantId(bill.tenantId);
+    setPreviousReading(String(bill.previousReading));
+    setCurrentReading(String(bill.currentReading));
+    setRatePerUnit(String(bill.ratePerUnit));
+    setOtherCharges(String(bill.otherCharges));
+    setEditingBill(bill);
+    setModal("bill");
+  };
+
+  const closeModal = () => {
+    setModal(null);
+    setEditingUnit(null);
+    setEditingTenant(null);
+    setEditingBill(null);
   };
 
   const navItems: { id: View; label: string; icon: string }[] = [
@@ -323,6 +359,7 @@ export default function Home() {
                 <PanelHeader title="Recent rent & bill activity" action="View all" onClick={() => setView("bills")} />
                 <BillTable bills={filteredBills.slice(0, 6)} tenantMap={tenantMap} unitMap={unitMap}
                   onPaid={(id) => post({ action: "markPaid", id }, "Payment marked as paid.")}
+                  onEdit={openEditBill}
                   getShareUrl={whatsAppUrl} />
               </div>
               <div className="panel quick-bill">
@@ -360,7 +397,13 @@ export default function Home() {
                   <h3>{tenant.name}</h3><p>{tenant.phone}</p>
                   <div className="person-details"><span><small>PROPERTY</small><strong>{unit?.type} {unit?.label}</strong></span><span><small>MONTHLY RENT</small><strong>{money.format(unit?.monthlyRent ?? 0)}</strong></span></div>
                   <div className="card-actions"><button onClick={() => openBillFor(tenant.id)} disabled={!tenant.active}>Create bill</button>
-                    {tenant.active && <button className="muted-button" onClick={() => post({ action: "vacateTenant", id: tenant.id }, "Occupant marked as vacated.")}>Mark vacated</button>}</div>
+                    <button className="muted-button" onClick={() => openEditTenant(tenant)}>Edit</button>
+                    {tenant.active && <button className="muted-button" onClick={() => post({ action: "vacateTenant", id: tenant.id }, "Occupant marked as vacated.")}>Mark vacated</button>}
+                    <button className="danger-button" onClick={() => {
+                      if (window.confirm(`Remove ${tenant.name}? This also deletes their bill history.`)) {
+                        post({ action: "deleteTenant", id: tenant.id }, "Occupant removed.");
+                      }
+                    }}>Remove</button></div>
                 </article>;
               })}
               {!filteredTenants.length && <Empty title="No occupants found" text="Add a person and assign them to a rental unit." />}
@@ -379,6 +422,7 @@ export default function Home() {
                   <div className="property-stats"><span><small>MONTHLY RENT</small><strong>{money.format(unit.monthlyRent)}</strong></span>
                     <span><small>METER NUMBER</small><strong>{unit.meterNumber || "Not added"}</strong></span></div>
                   <div className="occupant-row">{tenant ? <><span className="avatar small">{initials(tenant.name)}</span><div><strong>{tenant.name}</strong><small>{tenant.phone}</small></div></> : <span className="vacant-copy">Ready for a new occupant</span>}</div>
+                  <div className="card-actions"><button onClick={() => openEditUnit(unit)}>Edit unit</button></div>
                 </article>;
               })}
               {!data.units.length && <Empty title="No property units" text="Add your first room, shop or big hall." />}
@@ -389,6 +433,7 @@ export default function Home() {
             <PanelHeader title={`Rent & bills (${filteredBills.length})`} action="+ Create bill" onClick={() => openBillFor()} />
             <BillTable bills={filteredBills} tenantMap={tenantMap} unitMap={unitMap}
               onPaid={(id) => post({ action: "markPaid", id }, "Payment marked as paid.")}
+              onEdit={openEditBill}
               getShareUrl={whatsAppUrl} />
           </section>
         ) : (
@@ -414,51 +459,51 @@ export default function Home() {
 
       {modal && (
         <div className="modal-layer" role="dialog" aria-modal="true">
-          <button className="modal-backdrop" aria-label="Close dialog" onClick={() => setModal(null)} />
+          <button className="modal-backdrop" aria-label="Close dialog" onClick={closeModal} />
           <div className="modal-card">
-            <div className="modal-head"><div><span className="section-kicker">RENTKHATA</span><h2>{modal === "unit" ? "Add property unit" : modal === "tenant" ? "Add occupant" : "Create monthly bill"}</h2></div>
-              <button className="close" onClick={() => setModal(null)} aria-label="Close">×</button></div>
+            <div className="modal-head"><div><span className="section-kicker">RENTKHATA</span><h2>{modal === "unit" ? (editingUnit ? "Edit property unit" : "Add property unit") : modal === "tenant" ? (editingTenant ? "Edit occupant" : "Add occupant") : (editingBill ? "Edit bill" : "Create monthly bill")}</h2></div>
+              <button className="close" onClick={closeModal} aria-label="Close">×</button></div>
             {modal === "unit" ? (
-              <form onSubmit={submitUnit} className="form-grid">
-                <Field label="Unit name / number"><input name="label" required placeholder="e.g. Room 101, Main Shop, Big Hall" /></Field>
-                <Field label="Property type"><select name="type" required><option value="Room">Room</option><option value="Shop">Shop</option><option value="Hall">Big hall</option></select></Field>
-                <Field label="Monthly rent"><input name="monthlyRent" type="number" min="1" required placeholder="8500" /></Field>
-                <Field label="Electricity meter number"><input name="meterNumber" placeholder="Optional" /></Field>
-                <FormActions saving={saving} onCancel={() => setModal(null)} label="Add property unit" />
+              <form onSubmit={submitUnit} className="form-grid" key={editingUnit?.id ?? "new-unit"}>
+                <Field label="Unit name / number"><input name="label" required placeholder="e.g. Room 101, Main Shop, Big Hall" defaultValue={editingUnit?.label} /></Field>
+                <Field label="Property type"><select name="type" required defaultValue={editingUnit?.type ?? "Room"}><option value="Room">Room</option><option value="Shop">Shop</option><option value="Hall">Big hall</option></select></Field>
+                <Field label="Monthly rent"><input name="monthlyRent" type="number" min="1" required placeholder="8500" defaultValue={editingUnit?.monthlyRent} /></Field>
+                <Field label="Electricity meter number"><input name="meterNumber" placeholder="Optional" defaultValue={editingUnit?.meterNumber} /></Field>
+                <FormActions saving={saving} onCancel={closeModal} label={editingUnit ? "Save changes" : "Add property unit"} />
               </form>
             ) : modal === "tenant" ? (
-              <form onSubmit={submitTenant} className="form-grid">
-                <Field label="Full name"><input name="name" required placeholder="Occupant's name" /></Field>
-                <Field label="WhatsApp number"><input name="phone" type="tel" required placeholder="98765 43210" /></Field>
-                <Field label="Assign property"><select name="unitId" required defaultValue=""><option value="" disabled>Select a vacant unit</option>
-                  {data.units.filter((unit) => !occupiedUnitIds.has(unit.id)).map((unit) => <option key={unit.id} value={unit.id}>{unit.type} — {unit.label} ({money.format(unit.monthlyRent)})</option>)}</select></Field>
-                <Field label="Move-in date"><input name="moveInDate" type="date" required /></Field>
-                <Field label="Security deposit"><input name="securityDeposit" type="number" min="0" defaultValue="0" /></Field>
-                <Field label="Notes"><textarea name="notes" rows={3} placeholder="Optional details" /></Field>
-                <FormActions saving={saving} onCancel={() => setModal(null)} label="Add occupant" />
+              <form onSubmit={submitTenant} className="form-grid" key={editingTenant?.id ?? "new-tenant"}>
+                <Field label="Full name"><input name="name" required placeholder="Occupant's name" defaultValue={editingTenant?.name} /></Field>
+                <Field label="WhatsApp number"><input name="phone" type="tel" required placeholder="98765 43210" defaultValue={editingTenant?.phone} /></Field>
+                <Field label="Assign property"><select name="unitId" required defaultValue={editingTenant ? String(editingTenant.unitId) : ""}><option value="" disabled>Select a vacant unit</option>
+                  {data.units.filter((unit) => !occupiedUnitIds.has(unit.id) || unit.id === editingTenant?.unitId).map((unit) => <option key={unit.id} value={unit.id}>{unit.type} — {unit.label} ({money.format(unit.monthlyRent)})</option>)}</select></Field>
+                <Field label="Move-in date"><input name="moveInDate" type="date" required defaultValue={editingTenant?.moveInDate} /></Field>
+                <Field label="Security deposit"><input name="securityDeposit" type="number" min="0" defaultValue={editingTenant?.securityDeposit ?? 0} /></Field>
+                <Field label="Notes"><textarea name="notes" rows={3} placeholder="Optional details" defaultValue={editingTenant?.notes} /></Field>
+                <FormActions saving={saving} onCancel={closeModal} label={editingTenant ? "Save changes" : "Add occupant"} />
               </form>
             ) : (
-              <form onSubmit={submitBill} className="form-grid bill-form">
+              <form onSubmit={submitBill} className="form-grid bill-form" key={editingBill?.id ?? "new-bill"}>
                 <Field label="Occupant"><select required value={billTenantId} onChange={(event) => {
                   const id = Number(event.target.value); setBillTenantId(id);
                   const previous = data.bills.find((bill) => bill.tenantId === id)?.currentReading ?? 0;
-                  setPreviousReading(previous); setCurrentReading(previous);
+                  setPreviousReading(String(previous)); setCurrentReading(String(previous));
                 }}><option value="" disabled>Select occupant</option>{activeTenants.map((tenant) => {
                   const unit = unitMap.get(tenant.unitId); return <option key={tenant.id} value={tenant.id}>{tenant.name} — {unit?.type} {unit?.label}</option>;
                 })}</select></Field>
-                <Field label="Bill month"><input name="billMonth" type="month" required defaultValue={new Date().toISOString().slice(0, 7)} /></Field>
-                <Field label="Previous meter reading"><input type="number" min="0" step="0.01" value={previousReading} onChange={(event) => setPreviousReading(Number(event.target.value))} required /></Field>
-                <Field label="Current meter reading"><input type="number" min={previousReading} step="0.01" value={currentReading} onChange={(event) => setCurrentReading(Number(event.target.value))} required /></Field>
-                <Field label="Electricity rate / unit"><input type="number" min="0" step="0.01" value={ratePerUnit} onChange={(event) => setRatePerUnit(Number(event.target.value))} required /></Field>
-                <Field label="Other charges"><input type="number" min="0" step="0.01" value={otherCharges} onChange={(event) => setOtherCharges(Number(event.target.value))} /></Field>
-                <Field label="Payment due date"><input name="dueDate" type="date" required /></Field>
+                <Field label="Bill month"><input name="billMonth" type="month" required defaultValue={editingBill?.billMonth ?? new Date().toISOString().slice(0, 7)} /></Field>
+                <Field label="Previous meter reading"><input type="number" min="0" step="0.01" value={previousReading} onChange={(event) => setPreviousReading(event.target.value)} required /></Field>
+                <Field label="Current meter reading"><input type="number" min={previousReading} step="0.01" value={currentReading} onChange={(event) => setCurrentReading(event.target.value)} required /></Field>
+                <Field label="Electricity rate / unit"><input type="number" min="0" step="0.01" value={ratePerUnit} onChange={(event) => setRatePerUnit(event.target.value)} required /></Field>
+                <Field label="Other charges"><input type="number" min="0" step="0.01" value={otherCharges} onChange={(event) => setOtherCharges(event.target.value)} /></Field>
+                <Field label="Payment due date"><input name="dueDate" type="date" required defaultValue={editingBill?.dueDate} /></Field>
                 <div className="bill-summary">
                   <div><span>Monthly rent</span><strong>{money.format(selectedUnit?.monthlyRent ?? 0)}</strong></div>
                   <div><span>Electricity ({unitsUsed} units)</span><strong>{money.format(electricityAmount)}</strong></div>
-                  <div><span>Other charges</span><strong>{money.format(otherCharges)}</strong></div>
+                  <div><span>Other charges</span><strong>{money.format(Number(otherCharges) || 0)}</strong></div>
                   <div className="grand-total"><span>Total payable</span><strong>{money.format(billTotal)}</strong></div>
                 </div>
-                <FormActions saving={saving} onCancel={() => setModal(null)} label="Save bill" />
+                <FormActions saving={saving} onCancel={closeModal} label={editingBill ? "Save changes" : "Save bill"} />
               </form>
             )}
           </div>
@@ -488,9 +533,9 @@ function FormActions({ saving, onCancel, label }: { saving: boolean; onCancel: (
   return <div className="form-actions"><button type="button" className="secondary" onClick={onCancel}>Cancel</button><button type="submit" className="primary" disabled={saving}>{saving ? "Saving…" : label}</button></div>;
 }
 
-function BillTable({ bills: rows, tenantMap, unitMap, onPaid, getShareUrl }: {
+function BillTable({ bills: rows, tenantMap, unitMap, onPaid, onEdit, getShareUrl }: {
   bills: Bill[]; tenantMap: Map<number, Tenant>; unitMap: Map<number, Unit>;
-  onPaid: (id: number) => void; getShareUrl: (bill: Bill) => string;
+  onPaid: (id: number) => void; onEdit: (bill: Bill) => void; getShareUrl: (bill: Bill) => string;
 }) {
   if (!rows.length) return <Empty title="No bills yet" text="Create your first combined rent and electricity bill." />;
   return <div className="table-wrap"><table><thead><tr><th>Occupant</th><th>Property</th><th>Bill month</th><th>Total</th><th>Due date</th><th>Status</th><th>Actions</th></tr></thead>
@@ -502,6 +547,7 @@ function BillTable({ bills: rows, tenantMap, unitMap, onPaid, getShareUrl }: {
         <td><strong>{unit?.label}</strong><small className="table-sub">{unit?.type}</small></td><td>{monthLabel(bill.billMonth)}</td><td><strong>{money.format(bill.totalAmount)}</strong><small className="table-sub">{money.format(bill.electricityAmount)} electricity</small></td>
         <td>{dateLabel(bill.dueDate)}</td><td><span className={`status ${status.toLowerCase()}`}>{status}</span></td>
         <td><div className="row-actions"><a className="whatsapp" href={getShareUrl(bill)} target="_blank" rel="noopener noreferrer" title="Share bill on WhatsApp">WhatsApp</a>
+          <button onClick={() => onEdit(bill)}>Edit</button>
           {bill.status !== "Paid" && <button onClick={() => onPaid(bill.id)}>Mark paid</button>}</div></td></tr>;
     })}</tbody></table></div>;
 }
