@@ -122,9 +122,12 @@ export default function Home() {
   const electricityDue = data.bills.filter((bill) => bill.status !== "Paid").reduce((sum, bill) => sum + bill.electricityAmount, 0);
   const occupiedUnitIds = new Set(activeTenants.map((tenant) => tenant.unitId));
   const currentMonthKey = new Date().toISOString().slice(0, 7);
-  const dueForReminder = activeTenants.filter((tenant) =>
-    !data.bills.some((bill) => bill.tenantId === tenant.id && bill.billMonth === currentMonthKey)
-  );
+  const currentBillFor = (tenantId: number) =>
+    data.bills.find((bill) => bill.tenantId === tenantId && bill.billMonth === currentMonthKey);
+  const dueForReminder = activeTenants.filter((tenant) => {
+    const bill = currentBillFor(tenant.id);
+    return !bill || bill.status !== "Paid";
+  });
   const dueTenantIds = new Set(dueForReminder.map((tenant) => tenant.id));
 
   const selectedTenant = billTenantId ? tenantMap.get(Number(billTenantId)) : undefined;
@@ -268,6 +271,11 @@ export default function Home() {
     return `https://wa.me/${phone}?text=${encodeURIComponent(text)}`;
   };
 
+  const reminderUrlFor = (tenant: Tenant) => {
+    const bill = currentBillFor(tenant.id);
+    return bill ? whatsAppUrl(bill) : rentReminderUrl(tenant);
+  };
+
   const openBillFor = (tenantId?: number) => {
     const id = tenantId ?? activeTenants[0]?.id ?? "";
     setBillTenantId(id);
@@ -371,11 +379,12 @@ export default function Home() {
                 <div className="reading-list">
                   {dueForReminder.map((tenant) => {
                     const unit = unitMap.get(tenant.unitId);
+                    const bill = currentBillFor(tenant.id);
                     return (
                       <article key={tenant.id}>
                         <div className="reading-icon">₹</div>
-                        <div><strong>{tenant.name}</strong><small>{unit?.type} {unit?.label} · {money.format(unit?.monthlyRent ?? 0)}/mo</small></div>
-                        <a className="whatsapp" href={rentReminderUrl(tenant)} target="_blank" rel="noopener noreferrer">Send reminder</a>
+                        <div><strong>{tenant.name}</strong><small>{unit?.type} {unit?.label} · {bill ? `${money.format(bill.totalAmount)} · ${bill.status}` : `${money.format(unit?.monthlyRent ?? 0)}/mo`}</small></div>
+                        <a className="whatsapp" href={reminderUrlFor(tenant)} target="_blank" rel="noopener noreferrer">Send reminder</a>
                       </article>
                     );
                   })}
@@ -442,7 +451,7 @@ export default function Home() {
                   <h3>{tenant.name}</h3><p>{tenant.phone}</p>
                   <div className="person-details"><span><small>PROPERTY</small><strong>{unit?.type} {unit?.label}</strong></span><span><small>MONTHLY RENT</small><strong>{money.format(unit?.monthlyRent ?? 0)}</strong></span></div>
                   <div className="card-actions"><button onClick={() => openBillFor(tenant.id)} disabled={!tenant.active}>Create bill</button>
-                    {tenant.active && <a className="whatsapp" href={rentReminderUrl(tenant)} target="_blank" rel="noopener noreferrer">Remind</a>}
+                    {tenant.active && <a className="whatsapp" href={reminderUrlFor(tenant)} target="_blank" rel="noopener noreferrer">Remind</a>}
                     <button className="muted-button" onClick={() => openEditTenant(tenant)}>Edit</button>
                     {tenant.active && <button className="muted-button" onClick={() => post({ action: "vacateTenant", id: tenant.id }, "Occupant marked as vacated.")}>Mark vacated</button>}
                     <button className="danger-button" onClick={() => {
