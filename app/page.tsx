@@ -121,6 +121,11 @@ export default function Home() {
   const pendingTotal = data.bills.filter((bill) => bill.status !== "Paid").reduce((sum, bill) => sum + bill.totalAmount, 0);
   const electricityDue = data.bills.filter((bill) => bill.status !== "Paid").reduce((sum, bill) => sum + bill.electricityAmount, 0);
   const occupiedUnitIds = new Set(activeTenants.map((tenant) => tenant.unitId));
+  const currentMonthKey = new Date().toISOString().slice(0, 7);
+  const dueForReminder = activeTenants.filter((tenant) =>
+    !data.bills.some((bill) => bill.tenantId === tenant.id && bill.billMonth === currentMonthKey)
+  );
+  const dueTenantIds = new Set(dueForReminder.map((tenant) => tenant.id));
 
   const selectedTenant = billTenantId ? tenantMap.get(Number(billTenantId)) : undefined;
   const selectedUnit = selectedTenant ? unitMap.get(selectedTenant.unitId) : undefined;
@@ -246,6 +251,23 @@ export default function Home() {
     return `https://wa.me/${phone}?text=${encodeURIComponent(text)}`;
   };
 
+  const rentReminderUrl = (tenant: Tenant) => {
+    const unit = unitMap.get(tenant.unitId);
+    if (!unit) return "#";
+    let phone = tenant.phone.replace(/\D/g, "");
+    if (phone.length === 10) phone = `91${phone}`;
+    const text = [
+      "*RentKhata — Rent Reminder*",
+      "",
+      `Hello ${tenant.name},`,
+      `This is a friendly reminder that your rent for ${unit.type} ${unit.label} is due.`,
+      `Monthly rent: ${money.format(unit.monthlyRent)}`,
+      "",
+      "Please arrange payment at your earliest convenience. Thank you.",
+    ].join("\n");
+    return `https://wa.me/${phone}?text=${encodeURIComponent(text)}`;
+  };
+
   const openBillFor = (tenantId?: number) => {
     const id = tenantId ?? activeTenants[0]?.id ?? "";
     setBillTenantId(id);
@@ -343,6 +365,23 @@ export default function Home() {
                 <button className="primary" onClick={() => setModal("unit")}>+ Add property unit</button>
               </section>
             )}
+            {dueForReminder.length > 0 && (
+              <section className="panel reminders-due">
+                <PanelHeader title={`Rent reminders due (${dueForReminder.length})`} action="View occupants" onClick={() => setView("occupants")} />
+                <div className="reading-list">
+                  {dueForReminder.map((tenant) => {
+                    const unit = unitMap.get(tenant.unitId);
+                    return (
+                      <article key={tenant.id}>
+                        <div className="reading-icon">₹</div>
+                        <div><strong>{tenant.name}</strong><small>{unit?.type} {unit?.label} · {money.format(unit?.monthlyRent ?? 0)}/mo</small></div>
+                        <a className="whatsapp" href={rentReminderUrl(tenant)} target="_blank" rel="noopener noreferrer">Send reminder</a>
+                      </article>
+                    );
+                  })}
+                </div>
+              </section>
+            )}
             <section className="metric-grid">
               <Metric icon="◎" tone="teal" label="Active occupants" value={String(activeTenants.length)}
                 detail={`${occupiedUnitIds.size} of ${data.units.length} units occupied`} />
@@ -393,10 +432,17 @@ export default function Home() {
               {filteredTenants.map((tenant) => {
                 const unit = unitMap.get(tenant.unitId);
                 return <article className="person-card" key={tenant.id}>
-                  <div className="person-top"><span className="avatar">{initials(tenant.name)}</span><span className={tenant.active ? "status paid" : "status neutral"}>{tenant.active ? "Active" : "Vacated"}</span></div>
+                  <div className="person-top">
+                    <span className="avatar">{initials(tenant.name)}</span>
+                    <div className="person-badges">
+                      <span className={tenant.active ? "status paid" : "status neutral"}>{tenant.active ? "Active" : "Vacated"}</span>
+                      {tenant.active && dueTenantIds.has(tenant.id) && <span className="status pending">Rent due</span>}
+                    </div>
+                  </div>
                   <h3>{tenant.name}</h3><p>{tenant.phone}</p>
                   <div className="person-details"><span><small>PROPERTY</small><strong>{unit?.type} {unit?.label}</strong></span><span><small>MONTHLY RENT</small><strong>{money.format(unit?.monthlyRent ?? 0)}</strong></span></div>
                   <div className="card-actions"><button onClick={() => openBillFor(tenant.id)} disabled={!tenant.active}>Create bill</button>
+                    {tenant.active && <a className="whatsapp" href={rentReminderUrl(tenant)} target="_blank" rel="noopener noreferrer">Remind</a>}
                     <button className="muted-button" onClick={() => openEditTenant(tenant)}>Edit</button>
                     {tenant.active && <button className="muted-button" onClick={() => post({ action: "vacateTenant", id: tenant.id }, "Occupant marked as vacated.")}>Mark vacated</button>}
                     <button className="danger-button" onClick={() => {
