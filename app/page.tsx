@@ -440,6 +440,7 @@ export default function Home() {
             <div className="people-grid">
               {filteredTenants.map((tenant) => {
                 const unit = unitMap.get(tenant.unitId);
+                const currentBill = currentBillFor(tenant.id);
                 return <article className="person-card" key={tenant.id}>
                   <div className="person-top">
                     <span className="avatar">{initials(tenant.name)}</span>
@@ -452,6 +453,9 @@ export default function Home() {
                   <div className="person-details"><span><small>PROPERTY</small><strong>{unit?.type} {unit?.label}</strong></span><span><small>MONTHLY RENT</small><strong>{money.format(unit?.monthlyRent ?? 0)}</strong></span></div>
                   <div className="card-actions"><button onClick={() => openBillFor(tenant.id)} disabled={!tenant.active}>Create bill</button>
                     {tenant.active && <a className="whatsapp" href={reminderUrlFor(tenant)} target="_blank" rel="noopener noreferrer">Remind</a>}
+                    {tenant.active && currentBill && currentBill.status !== "Paid" && (
+                      <button onClick={() => post({ action: "markPaid", id: currentBill.id }, "Payment marked as paid.")}>Mark paid</button>
+                    )}
                     <button className="muted-button" onClick={() => openEditTenant(tenant)}>Edit</button>
                     {tenant.active && <button className="muted-button" onClick={() => post({ action: "vacateTenant", id: tenant.id }, "Occupant marked as vacated.")}>Mark vacated</button>}
                     <button className="danger-button" onClick={() => {
