@@ -5,9 +5,11 @@ import AuthScreen from "./components/AuthScreen";
 import ChangePasswordScreen from "./components/ChangePasswordScreen";
 import GroceryManager from "./components/GroceryManager";
 import AppLoader from "./components/AppLoader";
+import UserManagement from "./components/UserManagement";
 
 type Unit = {
   id: number;
+  ownerId: number;
   label: string;
   type: "Room" | "Shop" | "Hall";
   monthlyRent: number;
@@ -16,6 +18,7 @@ type Unit = {
 
 type Tenant = {
   id: number;
+  ownerId: number;
   name: string;
   phone: string;
   unitId: number;
@@ -27,6 +30,7 @@ type Tenant = {
 
 type Bill = {
   id: number;
+  ownerId: number;
   tenantId: number;
   unitId: number;
   billMonth: string;
@@ -43,10 +47,11 @@ type Bill = {
   paidAt: string | null;
 };
 
-type LedgerData = { units: Unit[]; tenants: Tenant[]; bills: Bill[] };
-type View = "overview" | "occupants" | "properties" | "bills" | "electricity" | "groceries";
+type Owner = { id: number; name: string; email: string };
+type LedgerData = { units: Unit[]; tenants: Tenant[]; bills: Bill[]; owners: Owner[] };
+type View = "overview" | "occupants" | "properties" | "bills" | "electricity" | "groceries" | "users";
 type Modal = "unit" | "tenant" | "bill" | null;
-type User = { id: number; name: string; email: string; role: "Administrator" | "Manager"; mustChangePassword: boolean };
+type User = { id: number; name: string; email: string; role: "Administrator" | "User"; mustChangePassword: boolean };
 
 const money = new Intl.NumberFormat("en-IN", {
   style: "currency",
@@ -69,7 +74,7 @@ const initials = (name: string) =>
   name.split(" ").filter(Boolean).slice(0, 2).map((part) => part[0]).join("").toUpperCase();
 
 export default function Home() {
-  const [data, setData] = useState<LedgerData>({ units: [], tenants: [], bills: [] });
+  const [data, setData] = useState<LedgerData>({ units: [], tenants: [], bills: [], owners: [] });
   const [view, setView] = useState<View>("overview");
   const [modal, setModal] = useState<Modal>(null);
   const [loading, setLoading] = useState(true);
@@ -131,6 +136,7 @@ export default function Home() {
   const activeTenants = data.tenants.filter((tenant) => tenant.active);
   const tenantMap = useMemo(() => new Map(data.tenants.map((tenant) => [tenant.id, tenant])), [data.tenants]);
   const unitMap = useMemo(() => new Map(data.units.map((unit) => [unit.id, unit])), [data.units]);
+  const ownerMap = useMemo(() => new Map(data.owners.map((owner) => [owner.id, owner])), [data.owners]);
   const paidTotal = data.bills.filter((bill) => bill.status === "Paid").reduce((sum, bill) => sum + bill.totalAmount, 0);
   const pendingTotal = data.bills.filter((bill) => bill.status !== "Paid").reduce((sum, bill) => sum + bill.totalAmount, 0);
   const electricityDue = data.bills.filter((bill) => bill.status !== "Paid").reduce((sum, bill) => sum + bill.electricityAmount, 0);
@@ -153,12 +159,12 @@ export default function Home() {
   const query = search.trim().toLowerCase();
   const filteredTenants = data.tenants.filter((tenant) => {
     const unit = unitMap.get(tenant.unitId);
-    return !query || `${tenant.name} ${tenant.phone} ${unit?.label ?? ""} ${unit?.type ?? ""}`.toLowerCase().includes(query);
+    return !query || `${tenant.name} ${tenant.phone} ${unit?.label ?? ""} ${unit?.type ?? ""} ${ownerMap.get(tenant.ownerId)?.name ?? ""}`.toLowerCase().includes(query);
   });
   const filteredBills = data.bills.filter((bill) => {
     const tenant = tenantMap.get(bill.tenantId);
     const unit = unitMap.get(bill.unitId);
-    return !query || `${tenant?.name ?? ""} ${unit?.label ?? ""} ${bill.billMonth} ${bill.status}`.toLowerCase().includes(query);
+    return !query || `${tenant?.name ?? ""} ${unit?.label ?? ""} ${bill.billMonth} ${bill.status} ${ownerMap.get(bill.ownerId)?.name ?? ""}`.toLowerCase().includes(query);
   });
   const electricityBills = filteredBills.filter((bill) => bill.electricityAmount > 0);
 
@@ -200,6 +206,7 @@ export default function Home() {
       type: form.get("type"),
       monthlyRent: Number(form.get("monthlyRent")),
       meterNumber: form.get("meterNumber"),
+      ownerId: form.get("ownerId") ? Number(form.get("ownerId")) : undefined,
     }, editingUnit ? "Property unit updated." : "Property unit added.");
     if (saved) setEditingUnit(null);
   };
@@ -336,13 +343,14 @@ export default function Home() {
     { id: "bills", label: "Rent & Bills", icon: "₹" },
     { id: "electricity", label: "Electricity", icon: "ϟ" },
     { id: "groceries", label: "Grocery Management", icon: "▦" },
+    ...(user?.role === "Administrator" ? [{ id: "users" as View, label: "User Management", icon: "◎" }] : []),
   ];
 
   const logout = async () => {
     const response = await fetch("/api/auth/logout", { method: "POST" });
     if (response.ok) {
       setUser(null);
-      setData({ units: [], tenants: [], bills: [] });
+      setData({ units: [], tenants: [], bills: [], owners: [] });
       setView("overview");
     } else setError("Could not sign out. Please try again.");
   };
@@ -384,9 +392,9 @@ export default function Home() {
             <label className="search">
               <span>⌕</span>
               <input value={search} onChange={(event) => setSearch(event.target.value)}
-                placeholder="Search people, units or bills…" aria-label="Search ledger" />
+                placeholder={view === "users" ? "Search user accounts…" : view === "groceries" ? "Search groceries…" : "Search people, units or bills…"} aria-label="Search workspace" />
             </label>
-            {view !== "groceries" && <button className="primary" onClick={() => setModal("tenant")} disabled={!data.units.length}>+ Add occupant</button>}
+            {view !== "groceries" && view !== "users" && <button className="primary" onClick={() => setModal("tenant")} disabled={!data.units.length}>+ Add occupant</button>}
           </div>
         </header>
 
@@ -479,7 +487,7 @@ export default function Home() {
                       {tenant.active && dueTenantIds.has(tenant.id) && <span className="status pending">Rent due</span>}
                     </div>
                   </div>
-                  <h3>{tenant.name}</h3><p>{tenant.phone}</p>
+                  <h3>{tenant.name}</h3><p>{tenant.phone}{ownerMap.has(tenant.ownerId) ? ` · Owner: ${ownerMap.get(tenant.ownerId)?.name}` : ""}</p>
                   <div className="person-details"><span><small>PROPERTY</small><strong>{unit?.type} {unit?.label}</strong></span><span><small>MONTHLY RENT</small><strong>{money.format(unit?.monthlyRent ?? 0)}</strong></span></div>
                   <div className="card-actions"><button onClick={() => openBillFor(tenant.id)} disabled={!tenant.active}>Create bill</button>
                     {tenant.active && <a className="whatsapp" href={reminderUrlFor(tenant)} target="_blank" rel="noopener noreferrer">Remind</a>}
@@ -506,7 +514,7 @@ export default function Home() {
                 const tenant = activeTenants.find((item) => item.unitId === unit.id);
                 return <article className="property-card" key={unit.id}>
                   <div className={`property-icon ${unit.type.toLowerCase()}`}>{unit.type === "Room" ? "⌂" : unit.type === "Shop" ? "▤" : "▦"}</div>
-                  <div className="property-copy"><div><span className="section-kicker">{unit.type}</span><h3>{unit.label}</h3></div>
+                  <div className="property-copy"><div><span className="section-kicker">{unit.type}{ownerMap.has(unit.ownerId) ? ` · ${ownerMap.get(unit.ownerId)?.name}` : ""}</span><h3>{unit.label}</h3></div>
                     <span className={tenant ? "status paid" : "status pending"}>{tenant ? "Occupied" : "Vacant"}</span></div>
                   <div className="property-stats"><span><small>MONTHLY RENT</small><strong>{money.format(unit.monthlyRent)}</strong></span>
                     <span><small>METER NUMBER</small><strong>{unit.meterNumber || "Not added"}</strong></span></div>
@@ -525,6 +533,8 @@ export default function Home() {
               onEdit={openEditBill}
               getShareUrl={whatsAppUrl} />
           </section>
+        ) : view === "users" ? (
+          <UserManagement currentUserId={user.id} search={search} />
         ) : view === "groceries" ? (
           <GroceryManager search={search} />
         ) : (
@@ -534,7 +544,7 @@ export default function Home() {
               <div className="reading-list">
                 {electricityBills.map((bill) => {
                   const tenant = tenantMap.get(bill.tenantId); const unit = unitMap.get(bill.unitId);
-                  return <article className="electricity-row" key={bill.id}><div className="reading-icon">ϟ</div><div><strong>{tenant?.name}</strong><small>{unit?.type} {unit?.label} · {monthLabel(bill.billMonth)} · {bill.status}</small></div>
+                  return <article className="electricity-row" key={bill.id}><div className="reading-icon">ϟ</div><div><strong>{tenant?.name}</strong><small>{unit?.type} {unit?.label} · {monthLabel(bill.billMonth)} · {bill.status}{ownerMap.has(bill.ownerId) ? ` · Owner: ${ownerMap.get(bill.ownerId)?.name}` : ""}</small></div>
                     <span><small>{bill.previousReading} → {bill.currentReading}</small><strong>{bill.unitsUsed} units</strong></span>
                     <strong className="electricity-amount">{money.format(bill.electricityAmount)}</strong>
                     <div className="row-actions electricity-actions">
@@ -576,6 +586,7 @@ export default function Home() {
                 <Field label="Property type"><select name="type" required defaultValue={editingUnit?.type ?? "Room"}><option value="Room">Room</option><option value="Shop">Shop</option><option value="Hall">Big hall</option></select></Field>
                 <Field label="Monthly rent"><input name="monthlyRent" type="number" min="1" required placeholder="8500" defaultValue={editingUnit?.monthlyRent} /></Field>
                 <Field label="Electricity meter number"><input name="meterNumber" placeholder="Optional" defaultValue={editingUnit?.meterNumber} /></Field>
+                {user.role === "Administrator" && !editingUnit && <Field label="Record owner"><select name="ownerId" defaultValue={user.id}>{data.owners.map((owner) => <option key={owner.id} value={owner.id}>{owner.name} — {owner.email}</option>)}</select></Field>}
                 <FormActions saving={saving} onCancel={closeModal} label={editingUnit ? "Save changes" : "Add property unit"} />
               </form>
             ) : modal === "tenant" ? (
@@ -583,7 +594,7 @@ export default function Home() {
                 <Field label="Full name"><input name="name" required placeholder="Occupant's name" defaultValue={editingTenant?.name} /></Field>
                 <Field label="WhatsApp number"><input name="phone" type="tel" required placeholder="98765 43210" defaultValue={editingTenant?.phone} /></Field>
                 <Field label="Assign property"><select name="unitId" required defaultValue={editingTenant ? String(editingTenant.unitId) : ""}><option value="" disabled>Select a vacant unit</option>
-                  {data.units.filter((unit) => !occupiedUnitIds.has(unit.id) || unit.id === editingTenant?.unitId).map((unit) => <option key={unit.id} value={unit.id}>{unit.type} — {unit.label} ({money.format(unit.monthlyRent)})</option>)}</select></Field>
+                  {data.units.filter((unit) => !occupiedUnitIds.has(unit.id) || unit.id === editingTenant?.unitId).map((unit) => <option key={unit.id} value={unit.id}>{unit.type} — {unit.label} ({money.format(unit.monthlyRent)}){ownerMap.has(unit.ownerId) ? ` — ${ownerMap.get(unit.ownerId)?.name}` : ""}</option>)}</select></Field>
                 <Field label="Move-in date"><input name="moveInDate" type="date" required defaultValue={editingTenant?.moveInDate} /></Field>
                 <Field label="Security deposit"><input name="securityDeposit" type="number" min="0" defaultValue={editingTenant?.securityDeposit ?? 0} /></Field>
                 <Field label="Notes"><textarea name="notes" rows={3} placeholder="Optional details" defaultValue={editingTenant?.notes} /></Field>
@@ -596,7 +607,7 @@ export default function Home() {
                   const previous = data.bills.find((bill) => bill.tenantId === id)?.currentReading ?? 0;
                   setPreviousReading(String(previous)); setCurrentReading(String(previous));
                 }}><option value="" disabled>Select occupant</option>{data.tenants.filter((tenant) => tenant.active || tenant.id === editingBill?.tenantId).map((tenant) => {
-                  const unit = unitMap.get(tenant.unitId); return <option key={tenant.id} value={tenant.id}>{tenant.name} — {unit?.type} {unit?.label}</option>;
+                  const unit = unitMap.get(tenant.unitId); return <option key={tenant.id} value={tenant.id}>{tenant.name} — {unit?.type} {unit?.label}{ownerMap.has(tenant.ownerId) ? ` — ${ownerMap.get(tenant.ownerId)?.name}` : ""}</option>;
                 })}</select></Field>
                 <Field label="Bill month"><input name="billMonth" type="month" required defaultValue={editingBill?.billMonth ?? new Date().toISOString().slice(0, 7)} /></Field>
                 <Field label="Previous meter reading"><input type="number" min="0" step="0.01" value={previousReading} onChange={(event) => setPreviousReading(event.target.value)} required /></Field>

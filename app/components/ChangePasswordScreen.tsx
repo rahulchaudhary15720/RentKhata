@@ -2,7 +2,7 @@
 
 import { FormEvent, useState } from "react";
 
-type User = { id: number; name: string; email: string; role: "Administrator" | "Manager"; mustChangePassword: boolean };
+type User = { id: number; name: string; email: string; role: "Administrator" | "User"; mustChangePassword: boolean };
 
 export default function ChangePasswordScreen({ user, onChanged }: { user: User; onChanged: (user: User) => void }) {
   const [error, setError] = useState(""); const [saving, setSaving] = useState(false);

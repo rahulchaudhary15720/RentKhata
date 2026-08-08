@@ -21,10 +21,10 @@ const sql = neon(process.env.DATABASE_URL);
 
 await sql`CREATE TABLE IF NOT EXISTS users (
   id SERIAL PRIMARY KEY, name TEXT NOT NULL, email TEXT NOT NULL, password_hash TEXT NOT NULL,
-  role TEXT NOT NULL DEFAULT 'Manager', must_change_password BOOLEAN NOT NULL DEFAULT FALSE,
+  role TEXT NOT NULL DEFAULT 'User', must_change_password BOOLEAN NOT NULL DEFAULT FALSE,
   created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 )`;
-await sql`ALTER TABLE users ADD COLUMN IF NOT EXISTS role TEXT NOT NULL DEFAULT 'Manager'`;
+await sql`ALTER TABLE users ADD COLUMN IF NOT EXISTS role TEXT NOT NULL DEFAULT 'User'`;
 await sql`ALTER TABLE users ADD COLUMN IF NOT EXISTS must_change_password BOOLEAN NOT NULL DEFAULT FALSE`;
 await sql`CREATE UNIQUE INDEX IF NOT EXISTS users_email_idx ON users (email)`;
 const [admin] = await sql`INSERT INTO users (name, email, password_hash, role, must_change_password)

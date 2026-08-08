@@ -17,7 +17,7 @@ export async function POST(request: Request) {
     const db = getDb();
     const [existing] = await db.select({ id: users.id }).from(users).where(eq(users.email, email)).limit(1);
     if (existing) return Response.json({ error: "An account with this email already exists." }, { status: 409 });
-    const [user] = await db.insert(users).values({ name, email, passwordHash: await hashPassword(password), role: "Manager" }).returning({ id: users.id, name: users.name, email: users.email, role: users.role, mustChangePassword: users.mustChangePassword });
+    const [user] = await db.insert(users).values({ name, email, passwordHash: await hashPassword(password), role: "User" }).returning({ id: users.id, name: users.name, email: users.email, role: users.role, mustChangePassword: users.mustChangePassword });
     await createSession(user.id);
     return Response.json({ user }, { status: 201 });
   } catch (error) {

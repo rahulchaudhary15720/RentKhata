@@ -34,10 +34,14 @@ export function initializeDb() {
       created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
     )`;
     await sql`CREATE UNIQUE INDEX IF NOT EXISTS users_email_idx ON users (email)`;
-    await sql`ALTER TABLE users ADD COLUMN IF NOT EXISTS role TEXT NOT NULL DEFAULT 'Manager'`;
+    await sql`ALTER TABLE users ADD COLUMN IF NOT EXISTS role TEXT NOT NULL DEFAULT 'User'`;
     await sql`ALTER TABLE users ADD COLUMN IF NOT EXISTS must_change_password BOOLEAN NOT NULL DEFAULT FALSE`;
+    await sql`ALTER TABLE users ADD COLUMN IF NOT EXISTS active BOOLEAN NOT NULL DEFAULT TRUE`;
+    await sql`ALTER TABLE users ALTER COLUMN role SET DEFAULT 'User'`;
+    await sql`ALTER TABLE users DROP CONSTRAINT IF EXISTS users_role_check`;
+    await sql`UPDATE users SET role = 'User' WHERE role = 'Manager'`;
     await sql`DO $$ BEGIN
-      ALTER TABLE users ADD CONSTRAINT users_role_check CHECK (role IN ('Administrator', 'Manager'));
+      ALTER TABLE users ADD CONSTRAINT users_role_check CHECK (role IN ('Administrator', 'User'));
     EXCEPTION WHEN duplicate_object THEN NULL; END $$`;
 
     await sql`CREATE TABLE IF NOT EXISTS sessions (

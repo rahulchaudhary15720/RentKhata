@@ -11,7 +11,7 @@ export async function POST(request: Request) {
     if (!validEmail(email) || !password) return Response.json({ error: "Enter your email and password." }, { status: 400 });
     await initializeDb();
     const [user] = await getDb().select().from(users).where(eq(users.email, email)).limit(1);
-    if (!user || !(await verifyPassword(password, user.passwordHash))) return Response.json({ error: "Email or password is incorrect." }, { status: 401 });
+    if (!user || !user.active || !(await verifyPassword(password, user.passwordHash))) return Response.json({ error: "Email or password is incorrect, or the account is inactive." }, { status: 401 });
     await createSession(user.id);
     return Response.json({ user: { id: user.id, name: user.name, email: user.email, role: user.role, mustChangePassword: user.mustChangePassword } });
   } catch {

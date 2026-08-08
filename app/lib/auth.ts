@@ -10,13 +10,21 @@ const scrypt = promisify(scryptCallback);
 export const SESSION_COOKIE = "rentkhata_session";
 const SESSION_DAYS = 30;
 
-export type UserRole = "Administrator" | "Manager";
+export type UserRole = "Administrator" | "User";
 export type SafeUser = { id: number; name: string; email: string; role: UserRole; mustChangePassword: boolean };
 
 export async function hashPassword(password: string) {
   const salt = randomBytes(16).toString("hex");
   const derived = (await scrypt(password, salt, 64)) as Buffer;
   return `scrypt:${salt}:${derived.toString("hex")}`;
+}
+
+export function generateTemporaryPassword() {
+  const sets = ["ABCDEFGHJKLMNPQRSTUVWXYZ", "abcdefghijkmnopqrstuvwxyz", "23456789", "!@#$%"];
+  const required = sets.map((set) => set[randomBytes(1)[0] % set.length]);
+  const alphabet = sets.join("");
+  const extra = Array.from(randomBytes(16), (byte) => alphabet[byte % alphabet.length]);
+  return [...required, ...extra].sort(() => randomBytes(1)[0] - 128).join("");
 }
 
 export async function verifyPassword(password: string, stored: string) {
@@ -59,7 +67,7 @@ export async function getCurrentUser(): Promise<SafeUser | null> {
   const [row] = await getDb().select({ id: users.id, name: users.name, email: users.email, role: users.role, mustChangePassword: users.mustChangePassword })
     .from(sessions)
     .innerJoin(users, eq(sessions.userId, users.id))
-    .where(and(eq(sessions.tokenHash, tokenHash(token)), gt(sessions.expiresAt, new Date())))
+    .where(and(eq(sessions.tokenHash, tokenHash(token)), gt(sessions.expiresAt, new Date()), eq(users.active, true)))
     .limit(1);
   return row ?? null;
 }

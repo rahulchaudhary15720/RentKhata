@@ -15,8 +15,9 @@ export const users = pgTable("users", {
   name: text("name").notNull(),
   email: text("email").notNull(),
   passwordHash: text("password_hash").notNull(),
-  role: text("role", { enum: ["Administrator", "Manager"] }).notNull().default("Manager"),
+  role: text("role", { enum: ["Administrator", "User"] }).notNull().default("User"),
   mustChangePassword: boolean("must_change_password").notNull().default(false),
+  active: boolean("active").notNull().default(true),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
 }, (table) => [uniqueIndex("users_email_idx").on(table.email)]);
 

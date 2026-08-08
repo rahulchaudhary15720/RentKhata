@@ -2,7 +2,7 @@
 
 import { FormEvent, useState } from "react";
 
-type User = { id: number; name: string; email: string; role: "Administrator" | "Manager"; mustChangePassword: boolean };
+type User = { id: number; name: string; email: string; role: "Administrator" | "User"; mustChangePassword: boolean };
 
 export default function AuthScreen({ onAuthenticated }: { onAuthenticated: (user: User) => void }) {
   const [mode, setMode] = useState<"login" | "signup">("login");

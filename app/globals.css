@@ -189,6 +189,7 @@ tbody tr:hover { background: #fdf9f0; }
 .category-filters { padding: 14px 20px; display: flex; gap: 6px; overflow-x: auto; border-bottom: 1px solid var(--line); }.category-filters button { white-space: nowrap; font-size: 11px; border: 1px solid transparent; }.category-filters button.active { border-color: #e0c2b6; }
 .grocery-panel td .status { margin-left: 6px; }.grocery-panel .danger-button { color: var(--red); }.expiry.expired, .negative { color: var(--red); font-weight: 700; }.positive { color: #207346; font-weight: 700; }.grocery-loading { padding: 20px; grid-template-columns: repeat(3, 1fr); }
 .stock-choice { grid-column: 1 / -1; display: grid; grid-template-columns: 1fr 1fr; padding: 4px; background: #f2eadb; border-radius: 10px; }.stock-choice button { min-height: 42px; border: 0; border-radius: 8px; background: transparent; color: var(--muted); font-weight: 750; }.stock-choice button.active { background: var(--surface); color: var(--teal); box-shadow: var(--shadow); }.stock-current { grid-column: 1 / -1; padding: 13px 15px; border-radius: 9px; background: var(--teal-pale); color: #5a4a34; }
+.admin-metrics { margin-bottom: 20px; }.admin-users-panel { min-height: 480px; }.admin-note { color: var(--muted); font-size: 11px; }.role-select { min-width: 125px; padding: 7px 9px; border: 1px solid var(--line); border-radius: 8px; background: var(--surface); color: var(--ink); }.admin-actions { flex-wrap: wrap; }.password-result { width: min(520px, 100%); }.password-result-body { padding: 24px; }.password-result-body p { color: var(--muted); line-height: 1.55; }.password-result-body code { display: block; margin: 18px 0; padding: 16px; border: 1px dashed #d7b9ac; border-radius: 10px; background: var(--teal-pale); color: var(--teal-dark); text-align: center; font-size: 16px; overflow-wrap: anywhere; }
 
 .backdrop { display: none; }
 @media (max-width: 1180px) {
@@ -213,6 +214,7 @@ tbody tr:hover { background: #fdf9f0; }
   .auth-page { grid-template-rows: clamp(108px, 18dvh, 142px) minmax(0, 1fr); }
   .auth-card-wrap { padding: 16px 18px; }.auth-story { padding: 14px 18px; border-radius: 0 0 22px 22px; }.auth-story.signin-background, .auth-story.signup-background { padding: 0; }.auth-card h2 { font-size: 25px; }
   .grocery-toolbar { padding: 12px 14px; align-items: stretch; flex-direction: column; }.tab-list { display: grid; grid-template-columns: 1fr 1fr; }.category-filters { padding: 10px 14px; }
+  .admin-note { display: none; }.admin-actions.row-actions { flex-direction: row; min-width: 210px; }
   .main { padding: 18px 14px 34px; }.topbar { gap: 12px; margin-bottom: 20px; }.topbar > div:nth-child(2) { flex: 1; }.topbar h1 { font-size: 25px; }.subhead { display: none; }
   .top-actions { margin-left: 0; display: grid; grid-template-columns: 1fr; }.top-actions .primary { width: 100%; }.search { width: 100%; }
   .welcome-banner { align-items: stretch; flex-direction: column; }.welcome-banner .primary { width: 100%; }
