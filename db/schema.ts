@@ -1,5 +1,6 @@
 import {
   boolean,
+  index,
   integer,
   numeric,
   pgTable,
@@ -9,8 +10,30 @@ import {
   uniqueIndex,
 } from "drizzle-orm/pg-core";
 
+export const users = pgTable("users", {
+  id: serial("id").primaryKey(),
+  name: text("name").notNull(),
+  email: text("email").notNull(),
+  passwordHash: text("password_hash").notNull(),
+  role: text("role", { enum: ["Administrator", "Manager"] }).notNull().default("Manager"),
+  mustChangePassword: boolean("must_change_password").notNull().default(false),
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+}, (table) => [uniqueIndex("users_email_idx").on(table.email)]);
+
+export const sessions = pgTable("sessions", {
+  id: serial("id").primaryKey(),
+  userId: integer("user_id").notNull().references(() => users.id, { onDelete: "cascade" }),
+  tokenHash: text("token_hash").notNull(),
+  expiresAt: timestamp("expires_at", { withTimezone: true }).notNull(),
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+}, (table) => [
+  uniqueIndex("sessions_token_idx").on(table.tokenHash),
+  index("sessions_user_idx").on(table.userId),
+]);
+
 export const units = pgTable("units", {
   id: serial("id").primaryKey(),
+  ownerId: integer("owner_id").notNull().references(() => users.id, { onDelete: "cascade" }),
   label: text("label").notNull(),
   type: text("type", { enum: ["Room", "Shop", "Hall"] }).notNull(),
   monthlyRent: numeric("monthly_rent", { precision: 12, scale: 2, mode: "number" }).notNull(),
@@ -20,6 +43,7 @@ export const units = pgTable("units", {
 
 export const tenants = pgTable("tenants", {
   id: serial("id").primaryKey(),
+  ownerId: integer("owner_id").notNull().references(() => users.id, { onDelete: "cascade" }),
   name: text("name").notNull(),
   phone: text("phone").notNull(),
   unitId: integer("unit_id").notNull().references(() => units.id),
@@ -32,6 +56,7 @@ export const tenants = pgTable("tenants", {
 
 export const bills = pgTable("bills", {
   id: serial("id").primaryKey(),
+  ownerId: integer("owner_id").notNull().references(() => users.id, { onDelete: "cascade" }),
   tenantId: integer("tenant_id").notNull().references(() => tenants.id),
   unitId: integer("unit_id").notNull().references(() => units.id),
   billMonth: text("bill_month").notNull(),
@@ -49,4 +74,35 @@ export const bills = pgTable("bills", {
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
 }, (table) => [
   uniqueIndex("bills_tenant_month_idx").on(table.tenantId, table.billMonth),
+]);
+
+export const groceryItems = pgTable("grocery_items", {
+  id: serial("id").primaryKey(),
+  ownerId: integer("owner_id").notNull().references(() => users.id, { onDelete: "cascade" }),
+  name: text("name").notNull(),
+  category: text("category").notNull(),
+  unit: text("unit").notNull(),
+  quantity: numeric("quantity", { precision: 14, scale: 2, mode: "number" }).notNull().default(0),
+  minimumStock: numeric("minimum_stock", { precision: 14, scale: 2, mode: "number" }).notNull().default(0),
+  unitPrice: numeric("unit_price", { precision: 12, scale: 2, mode: "number" }).notNull().default(0),
+  expiryDate: text("expiry_date"),
+  notes: text("notes").notNull().default(""),
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+}, (table) => [
+  index("grocery_items_owner_idx").on(table.ownerId),
+  uniqueIndex("grocery_items_owner_name_idx").on(table.ownerId, table.name),
+]);
+
+export const groceryTransactions = pgTable("grocery_transactions", {
+  id: serial("id").primaryKey(),
+  ownerId: integer("owner_id").notNull().references(() => users.id, { onDelete: "cascade" }),
+  itemId: integer("item_id").notNull().references(() => groceryItems.id, { onDelete: "cascade" }),
+  type: text("type", { enum: ["Stock in", "Stock out", "Correction"] }).notNull(),
+  quantityChange: numeric("quantity_change", { precision: 14, scale: 2, mode: "number" }).notNull(),
+  note: text("note").notNull().default(""),
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+}, (table) => [
+  index("grocery_transactions_owner_idx").on(table.ownerId),
+  index("grocery_transactions_item_idx").on(table.itemId),
 ]);

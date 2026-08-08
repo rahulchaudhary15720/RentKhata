@@ -1,6 +1,9 @@
 "use client";
 
 import { FormEvent, useEffect, useMemo, useState } from "react";
+import AuthScreen from "./components/AuthScreen";
+import ChangePasswordScreen from "./components/ChangePasswordScreen";
+import GroceryManager from "./components/GroceryManager";
 
 type Unit = {
   id: number;
@@ -40,8 +43,9 @@ type Bill = {
 };
 
 type LedgerData = { units: Unit[]; tenants: Tenant[]; bills: Bill[] };
-type View = "overview" | "occupants" | "properties" | "bills" | "electricity";
+type View = "overview" | "occupants" | "properties" | "bills" | "electricity" | "groceries";
 type Modal = "unit" | "tenant" | "bill" | null;
+type User = { id: number; name: string; email: string; role: "Administrator" | "Manager"; mustChangePassword: boolean };
 
 const money = new Intl.NumberFormat("en-IN", {
   style: "currency",
@@ -81,6 +85,8 @@ export default function Home() {
   const [editingUnit, setEditingUnit] = useState<Unit | null>(null);
   const [editingTenant, setEditingTenant] = useState<Tenant | null>(null);
   const [editingBill, setEditingBill] = useState<Bill | null>(null);
+  const [user, setUser] = useState<User | null>(null);
+  const [authChecked, setAuthChecked] = useState(false);
 
   const loadData = async () => {
     setLoading(true);
@@ -99,8 +105,15 @@ export default function Home() {
 
   useEffect(() => {
     let cancelled = false;
-    fetch("/api/ledger")
+    fetch("/api/auth/me")
       .then(async (response) => {
+        const result = await response.json();
+        if (!response.ok) return null;
+        if (!cancelled) setUser(result.user);
+        return fetch("/api/ledger");
+      })
+      .then(async (response) => {
+        if (!response) return;
         const result = await response.json();
         if (!response.ok) throw new Error(result.error || "Could not load your ledger.");
         if (!cancelled) setData(result);
@@ -109,7 +122,7 @@ export default function Home() {
         if (!cancelled) setError(reason instanceof Error ? reason.message : "Could not load your ledger.");
       })
       .finally(() => {
-        if (!cancelled) setLoading(false);
+        if (!cancelled) { setLoading(false); setAuthChecked(true); }
       });
     return () => { cancelled = true; };
   }, []);
@@ -146,6 +159,7 @@ export default function Home() {
     const unit = unitMap.get(bill.unitId);
     return !query || `${tenant?.name ?? ""} ${unit?.label ?? ""} ${bill.billMonth} ${bill.status}`.toLowerCase().includes(query);
   });
+  const electricityBills = filteredBills.filter((bill) => bill.electricityAmount > 0);
 
   const notify = (message: string) => {
     setToast(message);
@@ -320,7 +334,21 @@ export default function Home() {
     { id: "properties", label: "Properties", icon: "▦" },
     { id: "bills", label: "Rent & Bills", icon: "₹" },
     { id: "electricity", label: "Electricity", icon: "ϟ" },
+    { id: "groceries", label: "Grocery Management", icon: "▦" },
   ];
+
+  const logout = async () => {
+    const response = await fetch("/api/auth/logout", { method: "POST" });
+    if (response.ok) {
+      setUser(null);
+      setData({ units: [], tenants: [], bills: [] });
+      setView("overview");
+    } else setError("Could not sign out. Please try again.");
+  };
+
+  if (!authChecked) return <div className="auth-loading"><span className="brand-mark">R</span><p>Loading your workspace…</p></div>;
+  if (!user) return <AuthScreen onAuthenticated={(account) => { setUser(account); setError(""); void loadData(); }} />;
+  if (user.mustChangePassword) return <ChangePasswordScreen user={user} onChanged={(account) => { setUser(account); setError(""); void loadData(); }} />;
 
   return (
     <div className="app-shell">
@@ -335,8 +363,9 @@ export default function Home() {
           ))}
         </nav>
         <div className="sidebar-foot">
-          <div className="tiny-label">PROPERTY MANAGER</div>
-          <div className="owner-card"><span className="avatar small">RC</span><div><strong>Rahul</strong><small>Administrator</small></div></div>
+          <div className="tiny-label">SIGNED IN AS</div>
+          <div className="owner-card"><span className="avatar small">{initials(user.name)}</span><div><strong>{user.name}</strong><small>{user.role}</small></div></div>
+          <button className="logout-button" onClick={logout}>Sign out</button>
         </div>
       </aside>
 
@@ -347,7 +376,7 @@ export default function Home() {
           <button className="menu-button" onClick={() => setMenuOpen(true)} aria-label="Open navigation">☰</button>
           <div>
             <p className="eyebrow">{view === "overview" ? "PROPERTY OVERVIEW" : view.toUpperCase()}</p>
-            <h1>{view === "overview" ? "Good morning, Rahul" : navItems.find((item) => item.id === view)?.label}</h1>
+            <h1>{view === "overview" ? `Good morning, ${user.name.split(" ")[0]}` : navItems.find((item) => item.id === view)?.label}</h1>
             <p className="subhead">{view === "overview" ? "Here’s what’s happening with your rentals today." : "Manage every detail from one simple workspace."}</p>
           </div>
           <div className="top-actions">
@@ -356,7 +385,7 @@ export default function Home() {
               <input value={search} onChange={(event) => setSearch(event.target.value)}
                 placeholder="Search people, units or bills…" aria-label="Search ledger" />
             </label>
-            <button className="primary" onClick={() => setModal("tenant")} disabled={!data.units.length}>+ Add occupant</button>
+            {view !== "groceries" && <button className="primary" onClick={() => setModal("tenant")} disabled={!data.units.length}>+ Add occupant</button>}
           </div>
         </header>
 
@@ -495,18 +524,25 @@ export default function Home() {
               onEdit={openEditBill}
               getShareUrl={whatsAppUrl} />
           </section>
+        ) : view === "groceries" ? (
+          <GroceryManager search={search} />
         ) : (
           <section className="electricity-layout">
             <div className="page-panel">
               <PanelHeader title="Electricity history" action="+ Add reading & bill" onClick={() => openBillFor()} />
               <div className="reading-list">
-                {filteredBills.filter((bill) => bill.electricityAmount > 0).map((bill) => {
+                {electricityBills.map((bill) => {
                   const tenant = tenantMap.get(bill.tenantId); const unit = unitMap.get(bill.unitId);
                   return <article key={bill.id}><div className="reading-icon">ϟ</div><div><strong>{tenant?.name}</strong><small>{unit?.type} {unit?.label} · {monthLabel(bill.billMonth)}</small></div>
                     <span><small>{bill.previousReading} → {bill.currentReading}</small><strong>{bill.unitsUsed} units</strong></span>
                     <strong>{money.format(bill.electricityAmount)}</strong></article>;
                 })}
-                {!data.bills.some((bill) => bill.electricityAmount > 0) && <Empty title="No meter readings" text="Create a bill to save electricity usage." />}
+                {!electricityBills.length && (
+                  <Empty
+                    title={search ? "No matching meter readings" : "No meter readings"}
+                    text={search ? "Try a different search term, or clear the search." : "Create a bill to save electricity usage."}
+                  />
+                )}
               </div>
             </div>
             <aside className="info-card"><span className="info-icon">i</span><h3>How electricity is calculated</h3>
