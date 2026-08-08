@@ -1,6 +1,6 @@
 export type GroceryInput = {
   name?: string; category?: string; unit?: string; quantity?: number;
-  minimumStock?: number; unitPrice?: number; expiryDate?: string | null; notes?: string;
+  minimumStock?: number; unitPrice?: number; purchasedBy?: string; expiryDate?: string | null; notes?: string;
 };
 
 export const normalizeEmail = (email: string) => email.trim().toLowerCase();
@@ -25,6 +25,7 @@ export function validateGroceryItem(payload: GroceryInput) {
   if (!finite(payload.quantity) || payload.quantity < 0 || payload.quantity > 999999999) return "Quantity must be a non-negative number.";
   if (!finite(payload.minimumStock) || payload.minimumStock < 0 || payload.minimumStock > 999999999) return "Minimum stock must be a non-negative number.";
   if (!finite(payload.unitPrice) || payload.unitPrice < 0 || payload.unitPrice > 999999999) return "Unit price must be a non-negative number.";
+  if (!payload.purchasedBy?.trim() || payload.purchasedBy.trim().length > 80) return "Purchaser name is required and must be at most 80 characters.";
   if (!validIsoDate(payload.expiryDate)) return "Expiry date must be a valid date.";
   if ((payload.notes?.length ?? 0) > 500) return "Notes must be at most 500 characters.";
   return null;

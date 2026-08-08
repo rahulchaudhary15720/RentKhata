@@ -111,11 +111,13 @@ export function initializeDb() {
       quantity NUMERIC(14,2) NOT NULL DEFAULT 0 CHECK (quantity >= 0),
       minimum_stock NUMERIC(14,2) NOT NULL DEFAULT 0 CHECK (minimum_stock >= 0),
       unit_price NUMERIC(12,2) NOT NULL DEFAULT 0 CHECK (unit_price >= 0),
+      purchased_by TEXT NOT NULL DEFAULT '',
       expiry_date TEXT,
       notes TEXT NOT NULL DEFAULT '',
       created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
       updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
     )`;
+    await sql`ALTER TABLE grocery_items ADD COLUMN IF NOT EXISTS purchased_by TEXT NOT NULL DEFAULT ''`;
     await sql`CREATE INDEX IF NOT EXISTS grocery_items_owner_idx ON grocery_items (owner_id)`;
     await sql`CREATE UNIQUE INDEX IF NOT EXISTS grocery_items_owner_name_idx ON grocery_items (owner_id, LOWER(name))`;
 
@@ -125,9 +127,11 @@ export function initializeDb() {
       item_id INTEGER NOT NULL REFERENCES grocery_items(id) ON DELETE CASCADE,
       type TEXT NOT NULL CHECK (type IN ('Stock in', 'Stock out', 'Correction')),
       quantity_change NUMERIC(14,2) NOT NULL CHECK (quantity_change <> 0),
+      person_name TEXT NOT NULL DEFAULT '',
       note TEXT NOT NULL DEFAULT '',
       created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
     )`;
+    await sql`ALTER TABLE grocery_transactions ADD COLUMN IF NOT EXISTS person_name TEXT NOT NULL DEFAULT ''`;
     await sql`CREATE INDEX IF NOT EXISTS grocery_transactions_owner_idx ON grocery_transactions (owner_id)`;
     await sql`CREATE INDEX IF NOT EXISTS grocery_transactions_item_idx ON grocery_transactions (item_id)`;
   })().catch((error) => {

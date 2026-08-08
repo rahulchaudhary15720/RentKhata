@@ -4,6 +4,7 @@ import { FormEvent, useEffect, useMemo, useState } from "react";
 import AuthScreen from "./components/AuthScreen";
 import ChangePasswordScreen from "./components/ChangePasswordScreen";
 import GroceryManager from "./components/GroceryManager";
+import AppLoader from "./components/AppLoader";
 
 type Unit = {
   id: number;
@@ -346,7 +347,7 @@ export default function Home() {
     } else setError("Could not sign out. Please try again.");
   };
 
-  if (!authChecked) return <div className="auth-loading"><span className="brand-mark">R</span><p>Loading your workspace…</p></div>;
+  if (!authChecked) return <AppLoader fullscreen />;
   if (!user) return <AuthScreen onAuthenticated={(account) => { setUser(account); setError(""); void loadData(); }} />;
   if (user.mustChangePassword) return <ChangePasswordScreen user={user} onChanged={(account) => { setUser(account); setError(""); void loadData(); }} />;
 
@@ -393,7 +394,7 @@ export default function Home() {
         {toast && <div className="toast">✓ {toast}</div>}
 
         {loading ? (
-          <div className="loading-grid"><div /><div /><div /><div /></div>
+          <AppLoader label="Refreshing your ledger" />
         ) : view === "overview" ? (
           <>
             {!data.units.length && (
@@ -533,9 +534,20 @@ export default function Home() {
               <div className="reading-list">
                 {electricityBills.map((bill) => {
                   const tenant = tenantMap.get(bill.tenantId); const unit = unitMap.get(bill.unitId);
-                  return <article key={bill.id}><div className="reading-icon">ϟ</div><div><strong>{tenant?.name}</strong><small>{unit?.type} {unit?.label} · {monthLabel(bill.billMonth)}</small></div>
+                  return <article className="electricity-row" key={bill.id}><div className="reading-icon">ϟ</div><div><strong>{tenant?.name}</strong><small>{unit?.type} {unit?.label} · {monthLabel(bill.billMonth)} · {bill.status}</small></div>
                     <span><small>{bill.previousReading} → {bill.currentReading}</small><strong>{bill.unitsUsed} units</strong></span>
-                    <strong>{money.format(bill.electricityAmount)}</strong></article>;
+                    <strong className="electricity-amount">{money.format(bill.electricityAmount)}</strong>
+                    <div className="row-actions electricity-actions">
+                      <button onClick={() => openEditBill(bill)}>Edit</button>
+                      {bill.status !== "Paid" && <button onClick={() => post({ action: "markPaid", id: bill.id }, "Payment marked as paid.")}>Mark paid</button>}
+                      <a className="whatsapp" href={whatsAppUrl(bill)} target="_blank" rel="noopener noreferrer">Share</a>
+                      <button className="danger-button" onClick={() => {
+                        if (window.confirm(`Delete ${tenant?.name ?? "this occupant"}'s electricity bill for ${monthLabel(bill.billMonth)}?`)) {
+                          post({ action: "deleteBill", id: bill.id }, "Electricity bill deleted.");
+                        }
+                      }}>Delete</button>
+                    </div>
+                  </article>;
                 })}
                 {!electricityBills.length && (
                   <Empty
@@ -583,7 +595,7 @@ export default function Home() {
                   const id = Number(event.target.value); setBillTenantId(id);
                   const previous = data.bills.find((bill) => bill.tenantId === id)?.currentReading ?? 0;
                   setPreviousReading(String(previous)); setCurrentReading(String(previous));
-                }}><option value="" disabled>Select occupant</option>{activeTenants.map((tenant) => {
+                }}><option value="" disabled>Select occupant</option>{data.tenants.filter((tenant) => tenant.active || tenant.id === editingBill?.tenantId).map((tenant) => {
                   const unit = unitMap.get(tenant.unitId); return <option key={tenant.id} value={tenant.id}>{tenant.name} — {unit?.type} {unit?.label}</option>;
                 })}</select></Field>
                 <Field label="Bill month"><input name="billMonth" type="month" required defaultValue={editingBill?.billMonth ?? new Date().toISOString().slice(0, 7)} /></Field>

@@ -85,6 +85,7 @@ export const groceryItems = pgTable("grocery_items", {
   quantity: numeric("quantity", { precision: 14, scale: 2, mode: "number" }).notNull().default(0),
   minimumStock: numeric("minimum_stock", { precision: 14, scale: 2, mode: "number" }).notNull().default(0),
   unitPrice: numeric("unit_price", { precision: 12, scale: 2, mode: "number" }).notNull().default(0),
+  purchasedBy: text("purchased_by").notNull().default(""),
   expiryDate: text("expiry_date"),
   notes: text("notes").notNull().default(""),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
@@ -100,6 +101,7 @@ export const groceryTransactions = pgTable("grocery_transactions", {
   itemId: integer("item_id").notNull().references(() => groceryItems.id, { onDelete: "cascade" }),
   type: text("type", { enum: ["Stock in", "Stock out", "Correction"] }).notNull(),
   quantityChange: numeric("quantity_change", { precision: 14, scale: 2, mode: "number" }).notNull(),
+  personName: text("person_name").notNull().default(""),
   note: text("note").notNull().default(""),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
 }, (table) => [

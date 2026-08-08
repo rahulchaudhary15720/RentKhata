@@ -7,7 +7,7 @@ import { finite, validateGroceryItem } from "@/app/lib/validation";
 type Payload = {
   action?: string; id?: number; name?: string; category?: string; unit?: string;
   quantity?: number; minimumStock?: number; unitPrice?: number; expiryDate?: string | null;
-  notes?: string; direction?: "in" | "out"; note?: string;
+  purchasedBy?: string; notes?: string; direction?: "in" | "out"; note?: string;
 };
 
 export async function GET() {
@@ -40,7 +40,7 @@ export async function POST(request: Request) {
       const values = {
         name: payload.name!.trim(), category: payload.category!.trim(), unit: payload.unit!.trim(),
         quantity: payload.quantity!, minimumStock: payload.minimumStock!, unitPrice: payload.unitPrice!,
-        expiryDate: payload.expiryDate || null, notes: payload.notes?.trim() ?? "", updatedAt: new Date(),
+        purchasedBy: payload.purchasedBy!.trim(), expiryDate: payload.expiryDate || null, notes: payload.notes?.trim() ?? "", updatedAt: new Date(),
       };
       const [duplicate] = await db.select({ id: groceryItems.id }).from(groceryItems).where(and(
         eq(groceryItems.ownerId, ownerId),
@@ -51,7 +51,7 @@ export async function POST(request: Request) {
 
       if (payload.action === "addItem") {
         const [item] = await db.insert(groceryItems).values({ ownerId, ...values }).returning();
-        if (item.quantity > 0) await db.insert(groceryTransactions).values({ ownerId, itemId: item.id, type: "Stock in", quantityChange: item.quantity, note: "Opening stock" });
+        if (item.quantity > 0) await db.insert(groceryTransactions).values({ ownerId, itemId: item.id, type: "Stock in", quantityChange: item.quantity, personName: item.purchasedBy, note: "Opening stock" });
         return Response.json({ item }, { status: 201 });
       }
       if (!payload.id || !Number.isInteger(payload.id)) return Response.json({ error: "A valid item id is required." }, { status: 400 });
@@ -59,7 +59,7 @@ export async function POST(request: Request) {
       if (!current) return Response.json({ error: "Grocery item not found." }, { status: 404 });
       const [item] = await db.update(groceryItems).set(values).where(and(eq(groceryItems.id, payload.id), eq(groceryItems.ownerId, ownerId))).returning();
       const change = item.quantity - current.quantity;
-      if (change !== 0) await db.insert(groceryTransactions).values({ ownerId, itemId: item.id, type: "Correction", quantityChange: change, note: "Quantity changed while editing item" });
+      if (change !== 0) await db.insert(groceryTransactions).values({ ownerId, itemId: item.id, type: "Correction", quantityChange: change, personName: item.purchasedBy, note: "Quantity changed while editing item" });
       return Response.json({ item });
     }
 
@@ -68,16 +68,19 @@ export async function POST(request: Request) {
       if (payload.direction !== "in" && payload.direction !== "out") return Response.json({ error: "Choose stock in or stock out." }, { status: 400 });
       if (!finite(payload.quantity) || payload.quantity! <= 0 || payload.quantity! > 999999999) return Response.json({ error: "Adjustment quantity must be greater than zero." }, { status: 400 });
       if ((payload.note?.length ?? 0) > 300) return Response.json({ error: "Adjustment note must be at most 300 characters." }, { status: 400 });
+      if (payload.direction === "in" && (!payload.purchasedBy?.trim() || payload.purchasedBy.trim().length > 80)) return Response.json({ error: "Purchaser name is required and must be at most 80 characters." }, { status: 400 });
       const delta = payload.direction === "in" ? payload.quantity! : -payload.quantity!;
       const type = payload.direction === "in" ? "Stock in" : "Stock out";
       const adjusted = await getSqlClient()`WITH updated AS (
         UPDATE grocery_items
-        SET quantity = quantity + ${delta}, updated_at = NOW()
+        SET quantity = quantity + ${delta},
+            purchased_by = CASE WHEN ${payload.direction} = 'in' THEN ${payload.purchasedBy?.trim() ?? ""} ELSE purchased_by END,
+            updated_at = NOW()
         WHERE id = ${payload.id} AND owner_id = ${ownerId} AND quantity + ${delta} >= 0
         RETURNING id
       )
-      INSERT INTO grocery_transactions (owner_id, item_id, type, quantity_change, note)
-      SELECT ${ownerId}, id, ${type}, ${delta}, ${payload.note?.trim() ?? ""} FROM updated
+      INSERT INTO grocery_transactions (owner_id, item_id, type, quantity_change, person_name, note)
+      SELECT ${ownerId}, id, ${type}, ${delta}, ${payload.direction === "in" ? payload.purchasedBy!.trim() : ""}, ${payload.note?.trim() ?? ""} FROM updated
       RETURNING item_id`;
       if (!adjusted.length) {
         const [exists] = await db.select({ quantity: groceryItems.quantity }).from(groceryItems).where(and(eq(groceryItems.id, payload.id), eq(groceryItems.ownerId, ownerId))).limit(1);
